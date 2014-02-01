@@ -3,6 +3,9 @@ CFLAGS=-c -Wall
 
 all: tests
 
+debug: CC += -DDEBUG -g
+debug: tests
+
 tests: slab.o test.o
 	$(CC) $? -o tests
 
