@@ -3,8 +3,10 @@
 
 #include <stdlib.h>
 
-#define PAGE_SZ 4096
-#define CACHE_LINE_SZ 0
+#define PAGE_SZ (size_t)0x1000
+#define SLAB_SMALL_OBJ_SZ PAGE_SZ/8
+#define SLAB_DEFAULT_ALIGN 8
+#define CACHE_LINE_SZ 0x40
 
 #define KM_SLEEP    0x00
 #define KM_NOSLEEP  0x01
@@ -26,14 +28,15 @@ struct kmem_bufctl {
 struct kmem_slab {
     kmem_slab_t next;
     kmem_slab_t prev;
-    kmem_bufctl_t free_list;
+    void* free_list; /* may point to bufctl or buf directly */
     int bufcount;
 };
 
 struct kmem_cache {
     char * name;
     size_t size;
-    int align;
+    size_t effsize;
+    int slab_maxbuf;
     void (*constructor)(void *, size_t);
     void (*destructor)(void *, size_t);
     kmem_slab_t slabs;
