@@ -29,6 +29,7 @@ struct kmem_bufctl {
 struct kmem_slab {
     kmem_slab_t next;
     kmem_slab_t prev;
+    kmem_bufctl_t start;
     void* free_list; /* may point to bufctl or buf directly */
     int bufcount;
 };

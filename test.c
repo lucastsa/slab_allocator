@@ -126,23 +126,20 @@ test_big_object() {
     // alocating enough for two slabs (auto-growing)
     for (i = 0; i < 9; i++) {
         pos = kmem_cache_alloc(cp, KM_NOSLEEP);
-        printf("alloc pos %i: %p\n", i, pos);
     }
 
-    // kmem_cache_free(cp, obj);
-
-    // kmem_cache_destroy(cp);
+    kmem_cache_destroy(cp);
 
     return 0;
 }
 
 static char *
 test_all () {
-    // run_test(test_cache_create);
-    // run_test(test_cache_grow);
-    // run_test(test_cache_alloc);
+    run_test(test_cache_create);
+    run_test(test_cache_grow);
+    run_test(test_cache_alloc);
     // run_test(test_perf_cache_alloc);
-    // run_test(test_cache_free);
+    run_test(test_cache_free);
     run_test(test_big_object);
     return 0;
 }

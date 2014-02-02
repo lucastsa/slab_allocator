@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <assert.h>
 #include "slab.h"
 
 /*  Creates a cache of objects.
@@ -35,8 +36,11 @@ kmem_cache_create(char *name, size_t size, int align,
             cp->slab_maxbuf = (PAGE_SZ - sizeof(struct kmem_slab)) / cp->effsize;
         }
         else {
-            // TODO: compute programmatically
+            // TODO: compute number of objects programmatically
             cp->slab_maxbuf = 8;
+
+            // create hash table...
+            // hcreate(cp->slab_maxbuf * 100);
         }
     }
     
@@ -75,6 +79,7 @@ kmem_cache_grow(kmem_cache_t cp) {
 
         // complete slab at the front...
         __slab_move_to_front(cp, slab);
+        assert(cp->slabs == slab);
 
         // printf("\n%p\n%p\n%#x\n%#x\n", mem, slab, sizeof(struct kmem_slab), sizeof(struct kmem_cache));
     }
@@ -91,22 +96,20 @@ kmem_cache_grow(kmem_cache_t cp) {
         slab->next = slab->prev = slab;        
         slab->bufcount = 0;
 
-        bufctl = (kmem_bufctl_t)malloc(sizeof(struct kmem_bufctl));
-        bufctl->next = NULL;
-        bufctl->buf = mem;
-        bufctl->slab = slab;
-        slab->free_list = bufctl;
-        printf("buf 0: %p\n", bufctl->buf);
+        bufctl = (kmem_bufctl_t)malloc(sizeof(struct kmem_bufctl) * cp->slab_maxbuf);
+        bufctl[0].next = NULL;
+        bufctl[0].buf = mem;
+        bufctl[0].slab = slab;
+        slab->start = &bufctl[0];
+        slab->free_list = &bufctl[0];
         // creating addtl bufctls
         for (i=1; i < cp->slab_maxbuf; i++) {
-            bufctl = (kmem_bufctl_t)malloc(sizeof(struct kmem_bufctl));
-            bufctl->next = slab->free_list;
-            bufctl->buf = mem + (i*cp->effsize + (PAGE_SZ%cp->effsize * (((i+1)*cp->effsize)/PAGE_SZ)));
-            bufctl->slab = slab;
-            slab->free_list = bufctl;
-            printf("buf %d: %p\n", i, bufctl->buf);
+            bufctl[i].next = slab->free_list;
+            bufctl[i].buf = mem + (i*cp->effsize + (PAGE_SZ%cp->effsize * (((i+1)*cp->effsize)/PAGE_SZ)));
+            bufctl[i].slab = slab;
+            slab->free_list = &bufctl[i];
         }
-        
+
         // complete slab at the front...
         __slab_move_to_front(cp, slab);        
 
@@ -122,7 +125,6 @@ kmem_cache_grow(kmem_cache_t cp) {
 void *
 kmem_cache_alloc(kmem_cache_t cp, int flags) {
     void *buf;
-    kmem_bufctl_t bufctl;
 
     // grow the cache if necessary...
     if (cp->slabs == NULL) 
@@ -160,6 +162,8 @@ void
 kmem_cache_free(kmem_cache_t cp, void *buf) {
     void * mem;
     kmem_slab_t slab;
+    // kmem_bufctl_t bufctl;
+
     // if this is a small object
     if (cp->size <= SLAB_SMALL_OBJ_SZ) {
         // compute slab position
@@ -171,17 +175,37 @@ kmem_cache_free(kmem_cache_t cp, void *buf) {
         *((void **)buf) = slab->free_list;
         slab->free_list = buf;
 
-        // if slab was empty, re-add to non-empty slabs
-        if (slab->bufcount == cp->slab_maxbuf) 
-            __slab_move_to_front(cp, slab);
-        
         slab->bufcount--;
-
+    
         // if slab is now complete, discard whole page
         if (slab->bufcount == 0) {
             __slab_remove(cp, slab);
             free(mem);
         }
+
+        // if slab WAS empty, re-add to non-empty slabs
+        if (slab->bufcount == cp->slab_maxbuf-1) 
+            __slab_move_to_front(cp, slab);
+
+    }
+    // if this is a large object
+    else {
+        // use hash table to get to bufctl
+
+        // ...
+        // bufctl = (kmem_cache_t)0x4000;
+        // slab = bufctl->slab;
+        // put bufctl back in the slab free list
+        // bufctl->next = slab->free_list;
+        // slab->free_list = bufctl;
+
+        // if slab is now complete, discard whole page
+        // if (slab->bufcount == 0) {
+        //     __slab_remove(cp, slab);
+        //     free(slab->start->buf); // free objects
+        //     free(slab->start); // free bufctls
+        //     free(slab); // free slab
+        // }   
     }
 }
 
@@ -196,9 +220,20 @@ kmem_cache_destroy(kmem_cache_t cp) {
 
     if (cp->size <= SLAB_SMALL_OBJ_SZ) {
         // freeing all allocated memory
-        for (slab=cp->slabs; slab != NULL; slab=slab->next) {
+        while (cp->slabs) {
+            slab = cp->slabs;
+            __slab_remove(cp, slab);
             mem = (void*)slab - PAGE_SZ + sizeof(struct kmem_slab);
             free(mem);
+        }
+    }
+    else {
+        while (cp->slabs) {
+            slab = cp->slabs;
+            __slab_remove(cp, slab);
+            free(slab->start->buf); // free objects
+            free(slab->start); // free bufctls
+            free(slab); // free slab
         }
     }
 
@@ -217,20 +252,22 @@ __slab_remove(kmem_cache_t cp, kmem_slab_t slab) {
     slab->prev->next = slab->next;
 
     // if front slab...
-    if (cp->slabs == slab)
+    if (cp->slabs == slab) {
         // if last slab
         if (slab->prev == slab) 
             cp->slabs = NULL;
         else
             cp->slabs = slab->prev;
+    }
 
     // if back slab
-    if (cp->slabs_back == slab) 
+    if (cp->slabs_back == slab) { 
         // if last slab
         if (slab->next == slab) 
             cp->slabs_back = NULL;
         else
             cp->slabs_back = slab->next;
+    }
 }
 
 /* Internal auxiliary to move slab to the front of freelist

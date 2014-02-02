@@ -1,9 +1,9 @@
 CC=gcc
-CFLAGS=-c -Wall
+CFLAGS=-c -O3
 
 all: tests
 
-debug: CC += -DDEBUG -g
+debug: CC += -Wall -DDEBUG -g
 debug: tests
 
 tests: slab.o test.o
