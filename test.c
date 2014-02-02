@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "slab.h"
+#define ITERATIONS 30000000
 
 #define rdtscll(val) __asm__ __volatile__("rdtsc" : "=A" (val))
 
@@ -62,7 +63,6 @@ test_cache_alloc() {
 
 static char *
 test_perf_cache_alloc() {
-    #define ITERATIONS 30000000
     unsigned long long start, end;    
     int i;
     // 12-byte struct
@@ -79,12 +79,13 @@ test_perf_cache_alloc() {
     rdtscll(end);
 
     printf("# %lld cycles for cache mem alloc\n", (end-start)/ITERATIONS);
-
+    obj->a = 1;
 
     rdtscll(start);
     for (i=0; i<ITERATIONS; i++)
         obj = (struct test *)malloc(sizeof(struct test));
     rdtscll(end);
+
 
     printf("# %lld cycles for malloc\n", (end-start)/ITERATIONS);
 
@@ -94,12 +95,55 @@ test_perf_cache_alloc() {
 }
 
 static char *
+test_cache_free() {
+    // 12-byte struct
+    struct test {
+        int a, b, c;
+    };
+    struct test * obj;
+
+    kmem_cache_t cp = kmem_cache_create("test", sizeof(struct test), 0, NULL, NULL);
+
+    obj = (struct test *)kmem_cache_alloc(cp, KM_NOSLEEP);
+
+    obj->a=1;
+    obj->b=1;
+    obj->c=1;
+
+    kmem_cache_free(cp, obj);
+
+    kmem_cache_destroy(cp);
+
+    return 0;
+}
+
+static char *
+test_big_object() {
+    int i;
+    void * pos;
+    kmem_cache_t cp = kmem_cache_create("test", 1000, 0, NULL, NULL);
+  
+    // alocating enough for two slabs (auto-growing)
+    for (i = 0; i < 9; i++) {
+        pos = kmem_cache_alloc(cp, KM_NOSLEEP);
+        printf("alloc pos %i: %p\n", i, pos);
+    }
+
+    // kmem_cache_free(cp, obj);
+
+    // kmem_cache_destroy(cp);
+
+    return 0;
+}
+
+static char *
 test_all () {
     // run_test(test_cache_create);
     // run_test(test_cache_grow);
     // run_test(test_cache_alloc);
-    run_test(test_perf_cache_alloc);
-
+    // run_test(test_perf_cache_alloc);
+    // run_test(test_cache_free);
+    run_test(test_big_object);
     return 0;
 }
 
@@ -113,6 +157,5 @@ main(void) {
 
     printf("=====================\nTOTAL TESTS:\t%04d\n", tests_run);
 
-    printf("%d\n", (0 || 2014));
     return (result != 0);
 }

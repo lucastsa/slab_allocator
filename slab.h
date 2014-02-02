@@ -2,8 +2,9 @@
 #define SLAB_H 1
 
 #include <stdlib.h>
+#include <unistd.h>
 
-#define PAGE_SZ (size_t)0x1000
+#define PAGE_SZ (size_t)sysconf(_SC_PAGESIZE)
 #define SLAB_SMALL_OBJ_SZ PAGE_SZ/8
 #define SLAB_DEFAULT_ALIGN 8
 #define CACHE_LINE_SZ 0x40
@@ -40,6 +41,7 @@ struct kmem_cache {
     void (*constructor)(void *, size_t);
     void (*destructor)(void *, size_t);
     kmem_slab_t slabs;
+    kmem_slab_t slabs_back;
 };
 
 
@@ -64,5 +66,14 @@ kmem_cache_grow(kmem_cache_t cp);
 
 void 
 kmem_cache_reap(void);
+
+inline void
+__slab_remove(kmem_cache_t cp, kmem_slab_t slab);
+
+inline void
+__slab_move_to_front(kmem_cache_t cp, kmem_slab_t slab);
+
+inline void
+__slab_move_to_back(kmem_cache_t cp, kmem_slab_t slab);
 
 #endif
